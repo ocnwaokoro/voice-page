@@ -1,0 +1,34 @@
+[project]
+name = "voice-page"
+version = "0.0.0"
+description = "Press a mic and talk live with an AI agent. Fully local."
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "pipecat-ai[webrtc,runner,silero,ollama,kokoro]==1.14.0",
+]
+
+[dependency-groups]
+dev = ["ruff>=0.14", "pytest>=8.4", "pytest-asyncio>=1.2"]
+mac = ["pipecat-ai[mlx-whisper]==1.14.0"]
+linux = []
+
+[tool.uv]
+package = false
+default-groups = ["dev"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["server/tests"]
+pythonpath = ["server"]
+asyncio_mode = "auto"
+markers = [
+    "models: needs real local models (run with make verify-local, never in CI)",
+    "browser: needs a browser (Playwright)",
+]
+addopts = "-m 'not models and not browser'"

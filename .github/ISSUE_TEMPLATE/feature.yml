@@ -1,0 +1,15 @@
+name: Feature
+description: New capability (usually written in plan/tickets.yaml instead)
+labels: [feature]
+body:
+  - type: input
+    id: id
+    attributes: {label: Ticket ID, placeholder: "T-M2-03"}
+  - type: textarea
+    id: what
+    attributes: {label: What and why}
+    validations: {required: true}
+  - type: textarea
+    id: done
+    attributes: {label: Done when, description: "Named tests + an observed audio round-trip with a number"}
+    validations: {required: true}

@@ -1,0 +1,14 @@
+name: Spike
+description: Time-boxed investigation
+labels: [spike]
+body:
+  - type: textarea
+    id: question
+    attributes: {label: Question to answer}
+    validations: {required: true}
+  - type: input
+    id: box
+    attributes: {label: Time box, placeholder: "2 h"}
+  - type: textarea
+    id: done
+    attributes: {label: Done when, description: "A written answer with numbers"}

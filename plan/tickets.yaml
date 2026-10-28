@@ -1,0 +1,130 @@
+# Source of truth for milestones and issues. scripts/sync_tickets.py creates the
+# GitHub labels, milestones and issues from this file (idempotent; numbers in issue_map.json).
+# Tickets for a milestone are drafted when that milestone starts.
+
+labels:
+  - {name: bug, color: d73a4a, description: "Something broken. Fix starts with a failing [BUG-n] test"}
+  - {name: feature, color: 0e8a16, description: "New capability"}
+  - {name: spike, color: fbca04, description: "Time-boxed investigation; done = a written answer with numbers"}
+  - {name: chore, color: c5def5, description: "Setup, tooling, upkeep"}
+  - {name: needs-owner, color: 5319e7, description: "Blocked on an owner decision"}
+  - {name: walk-finding, color: f9d0c4, description: "Found on the owner's walk; goes in the milestone batch PR"}
+
+milestones:
+  - {id: M0, title: "M0 · Engines working on the Mac", goal: "Each engine works alone on the Mac, with timings. Demo: make smoke speaks a line the local model wrote and transcribes the owner's clip."}
+  - {id: M1, title: "M1 · First real conversation", goal: "Talk to the agent in Pipecat's test page and interrupt it; latency measured per stage."}
+  - {id: M2, title: "M2 · Our server, voice.js, blank test page", goal: "Talk from our own unbranded page on the Mac through voice.js; no double calls."}
+  - {id: M3, title: "M3 · voice.js as a real API", goal: "Stable event contract with docs; a second bare page drives the engine from the docs alone."}
+  - {id: M4, title: "M4 · On the iPhone", goal: "Full conversation from the owner's iPhone over Wi-Fi (local HTTPS, Safari audio)."}
+  - {id: M5, title: "M5 · Live words as you speak", goal: "Interim words appear while speaking and firm up when final; reply latency within ~100 ms of M2."}
+  - {id: M6, title: "M6 · Transcript and turn states", goal: "Agent text synced to its voice, interruptions marked, Listening/Thinking/Speaking, screen-reader support."}
+  - {id: M7, title: "M7 · Topics, persona, knowledge from config", goal: "Name, tone, topics and facts from YAML; topic opens a focused call; out-of-scope questions declined."}
+  - {id: M8, title: "M8 · Safe to leave running", goal: "Short-lived tokens, call cap, timeouts, rate limits, no stored transcripts; make verify-local prints pass/fail."}
+  - {id: M9, title: "M9 · Server-ready, still $0", goal: "Linux engine settings, Docker, HTTPS/TURN configs and runbook, proven on the Mac."}
+
+tickets:
+  - id: T-M0-01
+    milestone: M0
+    labels: [chore]
+    title: "Back up and upgrade Ollama, pull qwen3.5:4b"
+    body: |
+      Back up ~/.ollama and save `ollama list` output, then upgrade Ollama from 0.6.5 to current and pull `qwen3.5:4b`.
+    done:
+      - "`ollama --version` shows the new version (pasted)"
+      - "`ollama ps` shows qwen3.5:4b loaded (pasted)"
+      - "Backup path and pre-upgrade model list recorded in the ledger"
+  - id: T-M0-02
+    milestone: M0
+    labels: [chore]
+    depends: [T-M0-01]
+    title: "Ollama settings: context length and thinking off"
+    body: |
+      Make the context length persist for the Mac app and prove thinking is off through the OpenAI-compatible endpoint (/v1).
+    done:
+      - "`ollama ps` shows the configured context"
+      - "10 replies via /v1 contain no <think> text (script output pasted)"
+  - id: T-M0-03
+    milestone: M0
+    labels: [chore]
+    title: "Python scaffold and CI"
+    body: |
+      server/ with uv on Python 3.13; pyproject groups dev / mac / linux; pipecat-ai 1.14.0.
+      mlx-whisper goes in the mac group only, so a Linux install never breaks.
+      One ubuntu CI job: ruff check, ruff format --check, pytest -m "not models". Cancel superseded runs.
+    done:
+      - "`uv sync --group mac` succeeds on the Mac; `import pipecat` prints 1.14.0"
+      - "CI green on the PR in under 3 minutes (run link)"
+  - id: T-M0-04
+    milestone: M0
+    labels: [feature]
+    depends: [T-M0-02, T-M0-03]
+    title: "make smoke: each engine alone, with timings"
+    body: |
+      scripts/smoke_engines.py and scripts/doctor.sh, run by `make smoke`:
+      Ollama streams a reply → Kokoro speaks it to a wav (and lists its voice IDs) → MLX Whisper large-v3-turbo transcribes a fixture.
+      Pre-downloads the models.
+    done:
+      - "Output pasted: LLM time to first token, TTS time to first audio, STT seconds per clip"
+      - "Owner hears the wav (walk)"
+  - id: T-M0-05
+    milestone: M0
+    labels: [chore]
+    title: "Test-audio fixtures"
+    body: |
+      e2e/fixtures/audio/: 10 short clips in the owner's voice (16 kHz mono wav) plus refs.txt with the exact words.
+      Accent clips from other speakers come later (before M5).
+    done:
+      - "Clips and refs.txt committed; smoke transcribes all 10"
+  - id: T-M0-06
+    milestone: M0
+    labels: [spike]
+    depends: [T-M0-04]
+    title: "Measure memory with all engines loaded"
+    body: |
+      With Whisper, Kokoro and qwen3.5:4b loaded at the chosen context, record real memory use (ollama ps, Activity Monitor / vmmap).
+    done:
+      - "Numbers in docs/DECISIONS or the PR, with headroom left on 24 GB"
+
+  - id: T-M1-01
+    milestone: M1
+    labels: [feature]
+    title: "bot.py: the voice pipeline"
+    body: |
+      Pipecat v1.x: SmallWebRTC → MLX Whisper → user aggregator (Silero + Smart Turn) → Ollama → Kokoro → output → assistant aggregator.
+      Agent name "Assistant", generic persona, greets on connect.
+    done:
+      - "Screen recording with audio of 5 turns in Pipecat's test page"
+  - id: T-M1-02
+    milestone: M1
+    labels: [feature]
+    title: "services.py: engines chosen by environment variables"
+    body: |
+      STT_PROVIDER / STT_MODEL / LLM_PROVIDER / LLM_BASE_URL / LLM_MODEL / TTS_PROVIDER / TTS_VOICE, with lazy imports.
+    done:
+      - "Unit test per switch; changing LLM_MODEL swaps the model with no code edit (log line)"
+  - id: T-M1-03
+    milestone: M1
+    labels: [feature]
+    depends: [T-M1-01]
+    title: "Latency logging per stage"
+    body: |
+      Pipecat latency observer + metrics → JSONL (no transcript text). scripts/latency_report.py prints p50/p95 and per-stage breakdown.
+    done:
+      - "Report over 10 real turns pasted; sets the latency gate (decision)"
+  - id: T-M1-04
+    milestone: M1
+    labels: [feature]
+    depends: [T-M1-01]
+    title: "Warm start"
+    body: Load Whisper, Kokoro and the LLM at boot so the first reply is not slow.
+    done:
+      - "First-greeting latency logged, before and after"
+  - id: T-M1-05
+    milestone: M1
+    labels: [spike]
+    depends: [T-M1-01]
+    title: "Interruptions and echo: headphones vs laptop speakers"
+    body: |
+      Test barge-in on headphones and on speakers; tune VAD start/confidence and mute strategies for speaker echo.
+    done:
+      - "One recording per setup; recommendation for speaker mode written for the owner"

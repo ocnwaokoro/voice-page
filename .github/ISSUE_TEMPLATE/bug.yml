@@ -1,0 +1,14 @@
+name: Bug
+description: Something is broken
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes: {label: What happened, description: "Steps, what you saw, what you expected"}
+    validations: {required: true}
+  - type: textarea
+    id: proof
+    attributes: {label: Evidence, description: "Recording, screenshot, log lines, latency numbers"}
+  - type: input
+    id: where
+    attributes: {label: Where, placeholder: "Mac Chrome / iPhone Safari / server"}

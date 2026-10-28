@@ -27,8 +27,16 @@ def repo() -> str:
 
 def sync_labels(labels: list[dict]) -> None:
     for label in labels:
-        gh("label", "create", label["name"], "--color", label["color"],
-           "--description", label["description"], "--force")
+        gh(
+            "label",
+            "create",
+            label["name"],
+            "--color",
+            label["color"],
+            "--description",
+            label["description"],
+            "--force",
+        )
 
 
 def sync_milestones(name: str, milestones: list[dict]) -> dict[str, str]:
@@ -36,7 +44,14 @@ def sync_milestones(name: str, milestones: list[dict]) -> dict[str, str]:
     titles = {m["title"] for m in existing}
     for m in milestones:
         if m["title"] not in titles:
-            gh("api", f"repos/{name}/milestones", "-f", f"title={m['title']}", "-f", f"description={m['goal']}")
+            gh(
+                "api",
+                f"repos/{name}/milestones",
+                "-f",
+                f"title={m['title']}",
+                "-f",
+                f"description={m['goal']}",
+            )
     return {m["id"]: m["title"] for m in milestones}
 
 
@@ -59,10 +74,17 @@ def main() -> None:
     for ticket in plan["tickets"]:
         if ticket["id"] in issue_map:
             continue
-        url = gh("issue", "create", "--title", f"{ticket['id']} · {ticket['title']}",
-                 "--body", issue_body(ticket, issue_map),
-                 "--milestone", milestone_titles[ticket["milestone"]],
-                 *[a for label in ticket["labels"] for a in ("--label", label)]).strip()
+        url = gh(
+            "issue",
+            "create",
+            "--title",
+            f"{ticket['id']} · {ticket['title']}",
+            "--body",
+            issue_body(ticket, issue_map),
+            "--milestone",
+            milestone_titles[ticket["milestone"]],
+            *[a for label in ticket["labels"] for a in ("--label", label)],
+        ).strip()
         issue_map[ticket["id"]] = int(url.rsplit("/", 1)[1])
         MAP.write_text(json.dumps(issue_map, indent=2) + "\n")
         print(f"{ticket['id']} → {url}")

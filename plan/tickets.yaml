@@ -168,3 +168,57 @@ tickets:
       turn-taking, interruption, greeting, and engine switching.
     done:
       - "pytest (not models) covers greeting, one full turn, and an interruption, and runs in CI in under 1 minute"
+
+  # --- Added 2026-10-28 after the HF speech-to-speech spike: decide where the compute runs ---
+  - id: T-M0-08
+    milestone: M0
+    labels: [chore, needs-owner]
+    title: "API keys and secrets handling for cloud engines"
+    body: |
+      Owner creates free accounts and keys: Groq (console.groq.com) and Google AI Studio (aistudio.google.com); optional Cartesia or Deepgram.
+      Keys live in voice-page-work/.env (outside the repo). Repo gets .env.example with names only; .env stays git-ignored.
+    done:
+      - "Keys present locally; `git grep` finds no key material"
+      - ".env.example committed with variable names only"
+  - id: T-M0-09
+    milestone: M0
+    labels: [spike]
+    depends: [T-M0-08]
+    title: "Spike: cloud cascade (Groq Whisper + Groq/Cerebras LLM + voice)"
+    body: |
+      Same clips and bench as spikes/hf-s2s. Pipeline: Groq Whisper STT → Groq (or Cerebras) LLM → voice (Kokoro on CPU locally, or a free-credit cloud voice).
+      Record per-stage and end-to-end latency (last speech → first audio), free-tier limits seen in the console, and data-use terms.
+    done:
+      - "Latency table next to the local baseline (2.7–8.3 s) in the PR"
+      - "Owner talks to it through the spike page"
+  - id: T-M0-10
+    milestone: M0
+    labels: [spike]
+    depends: [T-M0-08]
+    title: "Spike: Gemini Live speech-to-speech"
+    body: |
+      One streaming connection that listens, thinks and talks. Same clips and bench.
+      Record latency, free-tier limits shown in AI Studio, voice options, and whether free-tier audio may be used for training.
+    done:
+      - "Latency table in the PR; owner talks to it through the spike page"
+  - id: T-M0-11
+    milestone: M0
+    labels: [spike]
+    title: "Spike: local speed matrix (only if local mode stays)"
+    body: |
+      With Low Power Mode off: baseline; voice moved to CPU (Kokoro / Pocket TTS) so the model has the GPU alone;
+      speculative decoding (qwen3.5:4b mtp) or a 2B model; short cached prompt + first-words streaming.
+    done:
+      - "One table, same clips, each change measured on its own"
+  - id: T-M0-12
+    milestone: M0
+    labels: [chore, needs-owner]
+    depends: [T-M0-09, T-M0-10]
+    title: "Decision: where compute runs, and which engine"
+    body: |
+      From the spike numbers choose: cloud cascade, Gemini Live, local, or a mix by setting.
+      Confirm the engine framework (Pipecat has built-in Groq/Cerebras/Gemini Live/Cartesia/Deepgram; HF speech-to-speech is strongest fully local).
+      Update DECISIONS, README stack table, and later-milestone goals to match.
+    done:
+      - "Owner's typed choice recorded in docs/DECISIONS.md"
+      - "README and tickets.yaml updated in the same PR"

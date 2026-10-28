@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice Spike</title>
+<style>
+  :root{--bg:#fff;--ink:#14181f;--muted:#6b7280;--line:#e5e7eb;--accent:#1f6feb;--live:#16a34a;--err:#dc2626;--soft:#f6f8fa}
+  @media (prefers-color-scheme:dark){:root{--bg:#0d1117;--ink:#e6edf3;--muted:#8b949e;--line:#30363d;--accent:#4493f8;--live:#3fb950;--err:#f85149;--soft:#161b22}}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--ink);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:32px 16px}
+  main{max-width:640px;margin:0 auto;display:grid;gap:20px;justify-items:center}
+  h1{font-size:20px;font-weight:700}
+  #mic{width:120px;height:120px;border-radius:50%;border:0;background:var(--accent);color:#fff;font-size:15px;font-weight:600;cursor:pointer;transition:transform .15s}
+  #mic.on{background:var(--live);animation:pulse 1.6s ease-in-out infinite}
+  @keyframes pulse{50%{transform:scale(1.06)}}
+  #status{min-height:24px;color:var(--muted);text-align:center}
+  #status.err{color:var(--err)}
+  #live{min-height:52px;width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--soft);color:var(--muted);font-style:italic}
+  #log{width:100%;display:grid;gap:10px}
+  .row{padding:10px 14px;border-radius:10px;border:1px solid var(--line)}
+  .row b{display:block;font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+  .row.agent{border-color:var(--accent)}
+  .ms{font-size:12px;color:var(--muted);margin-top:4px;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<main>
+  <h1>Voice spike · HF speech-to-speech</h1>
+  <button id="mic" aria-pressed="false">Start</button>
+  <div id="status" role="status">Press Start, allow the mic, and talk. Headphones work best.</div>
+  <div id="live" aria-live="polite"></div>
+  <div id="log" role="log"></div>
+</main>
+<script type="module">
+const URL = "ws://127.0.0.1:8799/v1/realtime";
+const RATE = 16000;
+const $ = (id) => document.getElementById(id);
+let call = null;
+
+function status(text, err = false) { $("status").textContent = text; $("status").className = err ? "err" : ""; }
+function addRow(who, text) {
+  const row = document.createElement("div");
+  row.className = "row " + who;
+  row.innerHTML = `<b>${who === "you" ? "You" : "Agent"}</b><span></span>`;
+  row.querySelector("span").textContent = text;
+  $("log").appendChild(row);
+  row.scrollIntoView({ block: "end", behavior: "smooth" });
+  return row;
+}
+const b64 = (bytes) => { let s = ""; for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); return btoa(s); };
+function pcmFromB64(data) {
+  const bin = atob(data), out = new Float32Array(bin.length >> 1);
+  for (let i = 0; i < out.length; i++) { let v = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8); if (v >= 0x8000) v -= 0x10000; out[i] = v / 0x8000; }
+  return out;
+}
+
+const WORKLET = `class Cap extends AudioWorkletProcessor{process(i){const c=i[0]&&i[0][0];if(c){const o=new Int16Array(c.length);for(let k=0;k<c.length;k++){const s=Math.max(-1,Math.min(1,c[k]));o[k]=s<0?s*0x8000:s*0x7fff}this.port.postMessage(o.buffer,[o.buffer])}return true}}registerProcessor("cap",Cap)`;
+
+async function start() {
+  const c = { cancelled: false, playing: [], playHead: 0, agentRow: null, t: {} };
+  call = c;
+  $("mic").classList.add("on"); $("mic").textContent = "Stop"; $("mic").setAttribute("aria-pressed", "true");
+  status("Connecting…");
+  try {
+    // Mic and audio context first, inside the click (Safari rule).
+    c.ctx = new AudioContext({ sampleRate: RATE });
+    await c.ctx.resume();
+    c.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+    if (c.cancelled) return stop();
+    await c.ctx.audioWorklet.addModule(URL_createObjectURL(WORKLET));
+    c.ws = new WebSocket(URL);
+  } catch (e) { status(e.message || String(e), true); return stop(); }
+
+  const ws = c.ws, ctx = c.ctx;
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: "session.update", session: { type: "realtime", extensions: ["speech_to_speech.input_audio_transcription.snapshot"], audio: { input: { turn_detection: { type: "server_vad", interrupt_response: true } }, output: {} } } }));
+    const src = ctx.createMediaStreamSource(c.stream);
+    const node = new AudioWorkletNode(ctx, "cap");
+    let buf = [], n = 0;
+    node.port.onmessage = (ev) => {            // batch ~40 ms per message
+      const a = new Int16Array(ev.data); buf.push(a); n += a.length;
+      if (n >= 640 && ws.readyState === 1) {
+        const all = new Int16Array(n); let o = 0; for (const p of buf) { all.set(p, o); o += p.length; }
+        ws.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64(new Uint8Array(all.buffer)) }));
+        buf = []; n = 0;
+      }
+    };
+    src.connect(node);                          // not connected to speakers: no self-echo
+    c.nodes = { src, node };
+    status("Live. Speak now.");
+  };
+  ws.onmessage = (m) => {
+    if (c.cancelled) return;
+    const ev = JSON.parse(m.data), now = performance.now();
+    switch (ev.type) {
+      case "input_audio_buffer.speech_started":
+        for (const s of c.playing) { try { s.stop(); } catch {} }   // barge-in
+        c.playing = []; c.playHead = 0;
+        if (c.agentRow && !c.agentRow.done) c.agentRow.querySelector("span").textContent += " (interrupted)";
+        status("Listening…"); break;
+      case "input_audio_buffer.speech_stopped":
+        c.t.stop = now; status("Thinking…"); break;
+      case "speech_to_speech.input_audio_transcription.snapshot":
+      case "conversation.item.input_audio_transcription.delta":
+        if (ev.transcript) $("live").textContent = ev.transcript; break;
+      case "conversation.item.input_audio_transcription.completed":
+        $("live").textContent = ""; if (ev.transcript?.trim()) addRow("you", ev.transcript.trim()); break;
+      case "response.created":
+        c.agentRow = addRow("agent", ""); c.agentRow.done = false; break;
+      case "response.output_audio_transcript.delta":
+        if (c.agentRow) c.agentRow.querySelector("span").textContent += ev.delta; break;
+      case "response.output_audio.delta": {
+        if (c.t.stop && !c.t.first) {
+          c.t.first = now;
+          const ms = document.createElement("div"); ms.className = "ms";
+          ms.textContent = `first sound ${Math.round(now - c.t.stop)} ms after you stopped`;
+          c.agentRow?.appendChild(ms);
+        }
+        status("Speaking…");
+        const f = pcmFromB64(ev.delta), b = ctx.createBuffer(1, f.length, RATE); b.getChannelData(0).set(f);
+        const s = ctx.createBufferSource(); s.buffer = b; s.connect(ctx.destination);
+        const at = Math.max(ctx.currentTime, c.playHead); s.start(at); c.playHead = at + b.duration;
+        c.playing.push(s); s.onended = () => { c.playing = c.playing.filter((x) => x !== s); };
+        break;
+      }
+      case "response.done":
+        if (c.agentRow) c.agentRow.done = true; c.t = {}; status("Live. Speak now."); break;
+      case "error":
+        status(ev.error?.message || "Server error", true); break;
+    }
+  };
+  ws.onclose = () => { if (!c.cancelled) { status("Disconnected. Press Start to talk again."); stop(true); } };
+  ws.onerror = () => status("Can't reach the server on :8799. Is it running?", true);
+}
+
+function URL_createObjectURL(code) { return window.URL.createObjectURL(new Blob([code], { type: "text/javascript" })); }
+
+function stop(keepStatus) {
+  const c = call; call = null;
+  if (c) {
+    c.cancelled = true;
+    for (const s of c.playing) { try { s.stop(); } catch {} }
+    try { c.nodes?.src.disconnect(); c.nodes?.node.disconnect(); } catch {}
+    try { c.stream?.getTracks().forEach((t) => t.stop()); } catch {}
+    try { c.ws?.close(); } catch {}
+    try { c.ctx?.close(); } catch {}
+  }
+  $("mic").classList.remove("on"); $("mic").textContent = "Start"; $("mic").setAttribute("aria-pressed", "false");
+  $("live").textContent = "";
+  if (!keepStatus) status("Stopped. Press Start to talk again.");
+}
+
+$("mic").addEventListener("click", () => (call ? stop() : start()));
+addEventListener("pagehide", () => stop(true));
+</script>
+</body>
+</html>

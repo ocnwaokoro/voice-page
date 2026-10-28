@@ -13,7 +13,7 @@ labels:
 milestones:
   - {id: M0, title: "M0 · Engines working on the Mac", goal: "Each engine works alone on the Mac, with timings. Demo: make smoke speaks a line the local model wrote and transcribes the owner's clip."}
   - {id: M1, title: "M1 · First real conversation", goal: "Talk to the agent in Pipecat's test page and interrupt it; latency measured per stage."}
-  - {id: M2, title: "M2 · Our server, voice.js, blank test page", goal: "Talk from our own unbranded page on the Mac through voice.js; no double calls."}
+  - {id: M2, title: "M2 · Our server, voice.js, blank test page", goal: "Talk from our own unbranded page on the Mac through voice.js; no double calls. Includes the /dev console and the Playwright fake-mic harness."}
   - {id: M3, title: "M3 · voice.js as a real API", goal: "Stable event contract with docs; a second bare page drives the engine from the docs alone."}
   - {id: M4, title: "M4 · On the iPhone", goal: "Full conversation from the owner's iPhone over Wi-Fi (local HTTPS, Safari audio)."}
   - {id: M5, title: "M5 · Live words as you speak", goal: "Interim words appear while speaking and firm up when final; reply latency within ~100 ms of M2."}
@@ -84,6 +84,23 @@ tickets:
       With Whisper, Kokoro and qwen3.5:4b loaded at the chosen context, record real memory use (ollama ps, Activity Monitor / vmmap).
     done:
       - "Numbers in docs/DECISIONS or the PR, with headroom left on 24 GB"
+  - id: T-M0-07
+    milestone: M0
+    labels: [chore]
+    depends: [T-M0-03]
+    title: "Test harness skeleton"
+    body: |
+      One entry point per test layer, so every later ticket plugs into it:
+      - `make test`: fast unit tests with fake engines (what CI runs)
+      - `make smoke`: each real engine alone (T-M0-04)
+      - `make converse`: audio files through the real pipeline (M1)
+      - `make e2e`: browser tests (M2)
+      - `make verify-local`: everything that needs the Mac, one pass/fail summary
+      pytest markers `models` and `browser`. Every local run writes runs/<timestamp>/summary.json
+      (git-ignored) so results can be compared between runs.
+    done:
+      - "`make test` and `make verify-local` run (empty layers report 'skipped', not 'passed')"
+      - "summary.json written and printed as a one-screen table"
 
   - id: T-M1-01
     milestone: M1
@@ -128,3 +145,26 @@ tickets:
       Test barge-in on headphones and on speakers; tune VAD start/confidence and mute strategies for speaker echo.
     done:
       - "One recording per setup; recommendation for speaker mode written for the owner"
+  - id: T-M1-06
+    milestone: M1
+    labels: [feature]
+    depends: [T-M1-01, T-M0-05]
+    title: "Pipeline harness: audio files in, spoken replies out (no browser)"
+    body: |
+      `make converse` runs each fixture clip through the real pipeline headless (same bot.py, a file transport in place of WebRTC).
+      Per clip it saves: what it heard, what it replied, the reply audio, and per-stage timings.
+      The run report shows word error rate (jiwer), p50/p95 latency, and a diff against the previous run.
+      This is the regression gate every later milestone re-runs.
+    done:
+      - "Report over all fixtures pasted; reply wavs playable"
+      - "Running it twice shows a run-to-run diff"
+  - id: T-M1-07
+    milestone: M1
+    labels: [feature]
+    depends: [T-M0-07]
+    title: "Fake engines for CI tests"
+    body: |
+      Fake STT / LLM / TTS processors (scripted text, silent or tone audio) so the pipeline logic is tested in CI with no models:
+      turn-taking, interruption, greeting, and engine switching.
+    done:
+      - "pytest (not models) covers greeting, one full turn, and an interruption, and runs in CI in under 1 minute"
